@@ -5,7 +5,7 @@ from typing import Any, List, Dict, Union, Optional
 class DataStream(ABC):
 
     def __init__(self, stream_id: str) -> None:
-        self.stream_id: str = stream_id
+        self.stream_id = stream_id
 
     @abstractmethod
     def process_batch(self, data_batch: List[Any]) -> str:
@@ -19,28 +19,18 @@ class DataStream(ABC):
         return data_batch
 
     def get_stats(self) -> Dict[str, Union[str, int, float]]:
-        return {
-            "stream_id": self.stream_id,
-            "type": "Generic",
-        }
+        return {"stream_id": self.stream_id}
 
 
 class SensorStream(DataStream):
 
     def process_batch(self, data_batch: List[Any]) -> str:
-        temps: List[float] = []
-
-        for item in data_batch:
-            if "temp" in item:
-                value = float(item.split(":")[1])
-                temps.append(value)
-
-        avg: float = sum(temps) / len(temps) if temps else 0
-
-        return (
-            f"Sensor analysis: {len(data_batch)} readings processed, "
-            f"avg temp: {avg}°C"
-        )
+        temps = [
+            float(x.split(":")[1])
+            for x in data_batch if "temp" in x
+        ]
+        avg = sum(temps) / len(temps) if temps else 0
+        return f"{len(data_batch)} readings processed, avg temp: {avg}°C"
 
     def filter_data(
         self,
@@ -49,38 +39,26 @@ class SensorStream(DataStream):
     ) -> List[Any]:
         if criteria == "high":
             return [
-                item for item in data_batch
-                if "temp" in item and float(item.split(":")[1]) > 30
+                x for x in data_batch
+                if "temp" in x and float(x.split(":")[1]) > 30
             ]
         return data_batch
-
-    def get_stats(self) -> Dict[str, Union[str, int, float]]:
-        return {
-            "stream_id": self.stream_id,
-            "type": "Sensor",
-        }
 
 
 class TransactionStream(DataStream):
 
     def process_batch(self, data_batch: List[Any]) -> str:
-        total: int = 0
-
+        total = 0
         for item in data_batch:
-            action, value = item.split(":")
-            value = int(value)
+            action, val = item.split(":")
+            val = int(val)
 
-            if action == "buy":
-                total -= value
-            elif action == "sell":
-                total += value
+            if action == "sell":
+                total += val
+            elif action == "buy":
+                total -= val
 
-        sign: str = "+" if total > 0 else ""
-
-        return (
-            f"Transaction analysis: {len(data_batch)} operations, "
-            f"net flow: {sign}{total} units"
-        )
+        return f"{len(data_batch)} operations, net flow: {total} units"
 
     def filter_data(
         self,
@@ -89,27 +67,17 @@ class TransactionStream(DataStream):
     ) -> List[Any]:
         if criteria == "large":
             return [
-                item for item in data_batch
-                if int(item.split(":")[1]) > 100
+                x for x in data_batch
+                if int(x.split(":")[1]) > 100
             ]
         return data_batch
-
-    def get_stats(self) -> Dict[str, Union[str, int, float]]:
-        return {
-            "stream_id": self.stream_id,
-            "type": "Transaction",
-        }
 
 
 class EventStream(DataStream):
 
     def process_batch(self, data_batch: List[Any]) -> str:
-        errors: int = sum(1 for e in data_batch if e == "error")
-
-        return (
-            f"Event analysis: {len(data_batch)} events, "
-            f"{errors} error detected"
-        )
+        errors = sum(1 for e in data_batch if e == "error")
+        return f"{len(data_batch)} events, {errors} error detected"
 
     def filter_data(
         self,
@@ -120,66 +88,102 @@ class EventStream(DataStream):
             return [e for e in data_batch if e == "error"]
         return data_batch
 
-    def get_stats(self) -> Dict[str, Union[str, int, float]]:
-        return {
-            "stream_id": self.stream_id,
-            "type": "Event",
-        }
 
-
+# 🔥 REQUIRED CLASS
 class StreamProcessor:
 
-    def process_streams(
+    def process(
         self,
         streams: List[DataStream],
         batches: List[List[Any]]
-    ) -> None:
-        for stream, batch in zip(streams, batches):
-            print(stream.process_batch(batch))
+    ) -> List[str]:
+
+        return [
+            stream.process_batch(batch)
+            for stream, batch in zip(streams, batches)
+        ]
+
+    def filter(
+        self,
+        streams: List[DataStream],
+        batches: List[List[Any]],
+        criteria: List[Optional[str]]
+    ) -> List[List[Any]]:
+
+        return [
+            stream.filter_data(batch, crit)
+            for stream, batch, crit in zip(streams, batches, criteria)
+        ]
 
 
+# ================= MAIN =================
 if __name__ == "__main__":
     print("=== CODE NEXUS - POLYMORPHIC STREAM SYSTEM ===")
 
-    # Sensor
     sensor = SensorStream("SENSOR_001")
+    transaction = TransactionStream("TRANS_001")
+    event = EventStream("EVENT_001")
+
+    # Individual streams
+    batch = ["temp:22.5", "humidity:65", "pressure:1013"]
+
     print("\nInitializing Sensor Stream...")
     print("Stream ID: SENSOR_001, Type: Environmental Data")
-    batch = ["temp:22.5", "humidity:65", "pressure:1013"]
-    print(
-        "Processing sensor batch: "
-        "[temp:22.5, humidity:65, pressure:1013]"
-    )
-    print(sensor.process_batch(batch))
+    print(f"Processing sensor batch: {batch}")
+    print(f"Sensor analysis: {sensor.process_batch(batch)}")
 
-    # Transaction
-    transaction = TransactionStream("TRANS_001")
+    batch = ["buy:100", "sell:150", "buy:75"]
+
     print("\nInitializing Transaction Stream...")
     print("Stream ID: TRANS_001, Type: Financial Data")
-    batch = ["buy:100", "sell:150", "buy:75"]
-    print(
-        "Processing transaction batch: "
-        "[buy:100, sell:150, buy:75]"
-    )
-    print(transaction.process_batch(batch))
+    print(f"Processing transaction batch: {batch}")
+    print(f"Transaction analysis: {transaction.process_batch(batch)}")
 
-    # Event
-    event = EventStream("EVENT_001")
+    batch = ["login", "error", "logout"]
+
     print("\nInitializing Event Stream...")
     print("Stream ID: EVENT_001, Type: System Events")
-    batch = ["login", "error", "logout"]
-    print("Processing event batch: [login, error, logout]")
-    print(event.process_batch(batch))
+    print(f"Processing event batch: {batch}")
+    print(f"Event analysis: {event.process_batch(batch)}")
 
+    # 🔥 POLYMORPHIC PART
     print("\n=== Polymorphic Stream Processing ===")
     print("Processing mixed stream types through unified interface...")
 
+    streams = [sensor, transaction, event]
+    batches = [
+        ["temp:21", "temp:23"],
+        ["buy:10", "sell:20", "buy:5", "sell:15"],
+        ["login", "error", "error"]
+    ]
+
+    processor = StreamProcessor()
+    results = processor.process(streams, batches)
+
     print("\nBatch 1 Results:")
-    print("- Sensor data: 2 readings processed")
-    print("- Transaction data: 4 operations processed")
-    print("- Event data: 3 events processed")
+    for stream, result in zip(streams, results):
+
+        base_result = result.split(",")[0]  # extract count part
+
+        if isinstance(stream, SensorStream):
+            print(f"- Sensor data: {base_result}")
+
+        elif isinstance(stream, TransactionStream):
+            print(f"- Transaction data: {base_result}")
+
+        elif isinstance(stream, EventStream):
+            print(f"- Event data: {base_result}")
+
+    filtered = processor.filter(
+        streams,
+        batches,
+        ["high", "large", "error"]
+    )
 
     print("\nStream filtering active: High-priority data only")
-    print("Filtered results: 2 critical sensor alerts, 1 large transaction")
+    print(
+        f"Filtered results: {len(filtered[0])} critical sensor alerts, "
+        f"{len(filtered[1])} large transaction"
+    )
 
     print("\nAll streams processed successfully. Nexus throughput optimal.")
